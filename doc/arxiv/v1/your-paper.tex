@@ -1,0 +1,316 @@
+\pdfoutput=1
+\documentclass{article}
+
+\input{preamble/preamble.tex}
+\input{preamble/preamble_math}
+\input{preamble/definitions_basic}
+\input{preamble/minimalist_biblatex}
+
+\addbibresource{bibs/modal_project}
+
+\crefformat{equation}{(#2#1#3)}
+\crefformat{figure}{Figure~#2#1#3}
+\crefname{table}{Table}{Tables}
+
+\IfFileExists{siunitx.sty}{\usepackage[separate-uncertainty=true,multi-part-units=single]{siunitx}}{}
+
+\title{Do Language Models Represent Epistemic Modal Profiles?}
+\date{}
+\author{Lily Dong\\University of Chicago}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Epistemic modal expressions such as \emph{maybe}, \emph{must}, \emph{I think}, and \emph{apparently} do more than hedge a proposition: they encode a speaker's nonveridical stance, evidential basis, and degree or direction of commitment. This paper asks whether language models represent and express these modal profiles in natural discourse. Using the multilingual MODAL corpus of English, French, and Italian spoken dialogue, I construct a dataset of 688 lexical epistemic markers and their annotated polarity, evidence type, and discourse function. I distinguish two estimands that are often conflated in generation studies: a representation estimand, measured by linear probes on frozen hidden states, and an output-distribution estimand, measured by log-probability preference for human modal continuations over matched foils. The main result is that modal-profile information is far more available after the modal marker is present than before it. Longer turn-based context modestly improves pre-marker prediction, but marker-only representations are much more predictive. Under held-out-lemma controls, Qwen3's context-plus-marker state improves evidence and function prediction over marker-only, suggesting some contextual modal interpretation beyond lexical lookup. Causal language models prefer human adverbial modal continuations over foils only modestly above chance, with pairwise accuracies around 0.66--0.67.
+\end{abstract}
+
+\section{Introduction}
+
+Large language models often sound fluent while miscalibrating their epistemic commitment. A model may express certainty when the evidence warrants uncertainty, or hedge when the context licenses assertion. This is not merely a calibration problem over factual answers. It is a problem about the linguistic form by which a speaker presents a proposition as known, inferred, remembered, reported, visually evidenced, possible, likely, or denied.
+
+In this project, I use linguistic theory of epistemic modality to investigate the representation of modal expressions like \emph{maybe} and \emph{must} inside a language model. In \citet{giannakidou_mari_2026_modal}, modal sentences are analyzed as indicators of nonveridicality: when a speaker chooses a modal expression, the speaker does not simply assert that the prejacent proposition is true in the actual world. The relevant epistemic state contains alternatives, and modal markers organize those alternatives by force, evidential bias, and commitment. Thus the difference between \emph{may}, \emph{may not}, \emph{must}, \emph{probably}, \emph{apparently}, and \emph{I think} is of the semantics-pragmatics interface by which speakers encode uncertainty and evidence, which is represented as modal profile in the corpus I use in this project. Modal profile contains mainly three items: polarity, evidence type, and function. Polarity can be positive/negative/neutral, which means the utterance presents the proposition as mostly true/false or that the truth of the scope remains undecidable/open. Evidence type annotates what kind of evidential basis supports the truth evaluation of the scope, such as no evidence, direct, or indirect evidence. Dialogic function means what the epistemic marker is doing in the conversation, such as qualifying, accepting, rejecting, checking, etc. 
+
+This makes the project analogous to a broader question in representation learning: when does a sequence model recover latent structure from observations? OthelloGPT asks whether a model trained only on move sequences recovers board states \citep{li2022emergent}; the linear representation hypothesis asks when semantic variables are available as directions in representation space \citep{park2023linear}; and causal representation learning emphasizes that recovering latent variables from observational data requires careful assumptions and, ideally, intervention structure \citep{lippe2022citris}. In this project, I ask a more linguistic version of the same question: whether the hidden states of a language model contain linearly recoverable information about the modal profile of an utterance.
+
+More specifically, I ask:
+\begin{quote}
+Given the discourse before an epistemic marker, is the modal profile that a human speaker is about to express linearly recoverable from a language model's hidden state? Once the marker is present, does the model's representation encode the marker's modal profile beyond lexical lookup? Finally, does the model's output distribution prefer the human modal continuation over plausible alternatives?
+\end{quote}
+
+This formulation separates three increasingly strong claims. The weakest claim is that modal profiles can be predicted from the marker itself, which may reflect lexical regularities rather than contextual interpretation. A stronger claim is that modal profiles are recoverable from the pre-marker discourse state, before the modal expression appears. A still different claim is that the model's conditional output distribution assigns higher probability to the human modal continuation than to an alternative. I treat these as 3 distinct empirical questions.
+
+As a starting point, I use MODAL \citep{modal_ortolang_2017}, a multilingual corpus of English, French, and Italian spoken dialogue annotated for epistemic modality. MODAL provides natural discourse, human modal markers, their scopes, and relation-level labels for polarity, evidence type, and dialogic function. The goal is not to prove that language models have human-like epistemic states, but to test where modal-profile information is statistically recoverable: in the discourse context, in the marker, in the model's hidden states, or in its output distribution.
+\section{Formalization}
+
+Let $x_k$ be the $k$ previous speaker turns plus the current partial turn of the conversationbefore a modal marker, $m$ the human-produced modal marker, and $p$ the annotated scope or prejacent proposition. The MODAL annotation assigns each marker--scope relation a modal profile
+\[
+  a = (a^{\text{pol}}, a^{\text{evid}}, a^{\text{func}}),
+\]
+where $a^{\text{pol}}$ is polarity, $a^{\text{evid}}$ is evidence type, and $a^{\text{func}}$ is dialogic function. For example, a row may contain marker $m=\text{\emph{maybe}}$, scope $p=\text{\emph{it was four weeks ago}}$, and profile
+\[
+a=(\text{positive}, \text{memory}, \text{qualification}).
+\]
+
+\paragraph{Representations.}
+A frozen language model maps an input string to hidden states. I write
+\[
+  z_{\theta,\ell}(x_k)
+\]
+for the layer-$\ell$ representation of the pre-marker context, and
+\[
+  z_{\theta,\ell}(x_k,m)
+\]
+for the representation after the marker is included. A modal profile is \emph{linearly recoverable} from a representation if a simple affine classifier
+\[
+  g_{\ell}(z_{\theta,\ell}(\cdot)) = W_\ell z_{\theta,\ell}(\cdot) + b_\ell
+\]
+predicts one component of $a$ better than an appropriate baseline. This is a decodability claim, not by itself a causal claim that the model uses this variable when generating.
+
+\paragraph{Output distributions.}
+A causal language model also defines a conditional distribution over continuations,
+\[
+  P_\theta(y \mid x_k).
+\]
+This distribution is distinct from both the hidden representation and any single sampled answer. In the output-distribution experiment, the question is whether the model assigns more probability to the human modal continuation $m \circ p$ than to a matched foil continuation $\tilde m \circ p$.
+
+I estimate this using the length-normalized log-probability difference
+\[
+  \Delta_\theta(x_k,m,\tilde m,p)
+    =
+    \frac{1}{|m \circ p|}\log P_\theta(m \circ p \mid x_k)
+      -
+    \frac{1}{|\tilde m \circ p|}\log P_\theta(\tilde m \circ p \mid x_k).
+\]
+Here $\tilde m$ is an alternative marker from the same broad morphosyntactic class but with a different modal profile when possible. The scope $p$ is held fixed. A positive $\Delta_\theta$ means that the model's distribution prefers the human modal continuation over the foil.
+
+\paragraph{Decoded outputs.}
+Finally, a decoding rule $D$ maps the model distribution to one observed string,
+\[
+  \hat y = D(P_\theta(\cdot \mid x_k)).
+\]
+Greedy decoding, temperature sampling, and nucleus sampling can produce different $\hat y$ from the same underlying distribution. For this reason, I do not use a single decoded sample as the primary measurement. The probe experiments estimate linear recoverability from hidden states, and the continuation experiment estimates relative probability under $P_\theta$.
+\section{Data}
+
+MODAL contains English, French, and Italian spoken-dialogue excerpts annotated for epistemic constructions. The raw TEI XML stores full transcript context in the body and Analec annotation layers in the back matter: marker spans, scope portions, marker-scope relations, and feature structures. I flattened these layers into one row per epistemic relation.
+
+I use all occurrences whose marker morphosyntax belongs to one of five lexical categories: modal adverbs/adverbials, modal verbs, and complement-taking predicates (CTPs). This keeps the lexical modal expressions while excluding most purely interactional markers such as \emph{okay}, \emph{mhm}, and bare repetitions. The resulting experiment set has 688 rows.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Language & Rows & Percent \\
+\midrule
+English & 199 & 28.9 \\
+French & 278 & 40.4 \\
+Italian & 211 & 30.7 \\
+\midrule
+Total & 688 & 100.0 \\
+\bottomrule
+\end{tabular}
+\caption{Experiment rows by language after filtering to lexical epistemic markers.}
+\label{tab:data_language}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Label family & Label & Count \\
+\midrule
+Polarity & positive & 563 \\
+Polarity & neutral & 104 \\
+Polarity & negative & 21 \\
+\midrule
+Evidence & reported & 267 \\
+Evidence & no evidence & 201 \\
+Evidence & inferential & 170 \\
+Evidence & situated & 50 \\
+\midrule
+Function & qualification & 609 \\
+Function & other & 79 \\
+\bottomrule
+\end{tabular}
+\caption{Prediction targets. Evidence is coarsened from the original MODAL labels: reported combines quotative and indirect reportive evidence; situated combines memory and direct sensory/feeling evidence.}
+\label{tab:data_labels}
+\end{table}
+
+\section{Methods}
+
+\paragraph{Lexical baselines and hidden-state probes.}
+For each row, I compare whether the MODAL labels can be predicted from surface text features or from pretrained model hidden states. I use three kinds of predictors:
+\begin{enumerate}
+    \item a majority baseline;
+    \item a character 3--5gram TF-IDF lexical baseline with class-balanced logistic regression;
+    \item hidden-state probes trained on frozen representations from multilingual MiniLM, GPT-2, and Qwen3-0.6B.
+\end{enumerate}
+
+The TF-IDF model is a surface-text baseline. It converts the visible text into sparse character n-gram features and trains a logistic regression classifier to predict polarity, evidence type, or function. This baseline asks how much of the MODAL label can be recovered from lexical and orthographic cues alone.
+
+For the linear hidden-state probe: I first pass the input through the model and extract a fixed hidden-state representation $h$. Then I train a linear classifier on top of $h$:
+\[
+    \hat a = \mathrm{softmax}(Wh + b).
+\]
+If this classifier predicts a modal label above baseline, I treat the label as linearly recoverable from that hidden state. This is a decodability test: it shows that the information is accessible in the representation, but it does not by itself show that the model causally uses that information when generating.
+
+For encoder models, I mean-pool token states to obtain $h$. I use the final token state of the input sequence. All classifiers are evaluated with five-fold stratified cross-validation using balanced accuracy, since the MODAL labels are imbalanced.
+
+\paragraph{Turn-based context and marker-aware views.}
+Character windows are a poor unit for dialogue, so I construct prefixes with $k\in\{1,3,5,10,20\}$ previous speaker turns plus the current partial turn. I then compare several views: context only, marker only, marker plus scope, context plus marker, and context plus marker plus scope. These views distinguish two different questions. The context-only view asks whether the upcoming modal profile is recoverable before lexical realization. The marker-visible views ask whether the model represents the modal profile once the epistemic expression is present. I report both random cross-validation and held-out-lemma cross-validation. In held-out-lemma evaluation, all examples of a language-specific marker lemma are placed in the same fold. 
+
+\paragraph{Text ablation.}
+To test whether the modal profile is present in the discourse or mostly in the marker, I also run a TF-IDF ablation with different text views: prefix only, marker only, marker plus scope, and prefix plus marker plus scope.
+
+\paragraph{Output-distribution scoring.}
+I evaluate whether $P_\theta$ prefers the human modal continuation to an alternative, where I choose a same-language, same-morphosyntax foil with a different marker class and at least one differing modal profile label. I score length-normalized log probabilities under GPT-2, GPT-Neo-125M, and Qwen3-0.6B. 
+
+\section{Results}
+With the distinction above in mind, a high score in a marker-visible condition does not by itself show that the model represented the speaker's epistemic state before generation, but may instead show that the marker lexically determines its profile. So the key question is not only whether modal profiles are predictable, but where the information becomes recoverable and whether it survives controls that remove direct lemma memorization.
+
+\subsection{Longer turn context helps, but only modestly}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Pre-marker view & Polarity & Evidence & Function \\
+\midrule
+1 turn & 0.430 & 0.420 & 0.538 \\
+3 turns & 0.436 & 0.449 & 0.558 \\
+5 turns & 0.452 & 0.451 & 0.539 \\
+10 turns & 0.470 & 0.439 & 0.557 \\
+20 turns & \textbf{0.470} & \textbf{0.464} & \textbf{0.581} \\
+\bottomrule
+\end{tabular}
+\caption{Balanced accuracy of TF-IDF probes from turn-based pre-marker context. Longer dialogue context helps modestly, especially for function and evidence, but the signal remains limited.}
+\label{tab:probe}
+\end{table}
+
+Table~\ref{tab:probe} shows that turn-based context matters. Moving from one previous turn to twenty turns improves evidence prediction from 0.420 to 0.464 balanced accuracy and function prediction from 0.538 to 0.581. However, the pre-marker signal remains limited. The model is still being asked to anticipate both the modal expression and often the proposition that follows it.
+
+\subsection{Marker-Aware Representations}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Visible text & Polarity & Evidence & Function \\
+\midrule
+Majority & 0.333 & 0.250 & 0.500 \\
+10-turn context only & 0.470 & 0.439 & 0.557 \\
+Marker only & \textbf{0.578} & \textbf{0.642} & \textbf{0.697} \\
+Marker + scope & 0.442 & 0.503 & 0.551 \\
+10-turn context + marker & 0.469 & 0.455 & 0.550 \\
+10-turn context + marker + scope & 0.467 & 0.459 & 0.547 \\
+\bottomrule
+\end{tabular}
+\caption{TF-IDF ablation by visible text field under random cross-validation. The marker alone predicts the formal modal profile better than the discourse prefix.}
+\label{tab:ablation}
+\end{table}
+
+\Cref{tab:ablation} clarifies the source of the signal. The marker alone is substantially more predictive than the prefix, which mean that modal expressions lexicalize commitment, evidence, and nonveridical stance. A probe may be reading the lexical item rather than a contextual interpretation.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llccc}
+\toprule
+Representation & View & Polarity & Evidence & Function \\
+\midrule
+MiniLM & marker only & 0.560 & \textbf{0.566} & \textbf{0.652} \\
+MiniLM & context only & 0.397 & 0.255 & 0.544 \\
+MiniLM & context + marker & 0.363 & 0.287 & 0.525 \\
+\midrule
+Qwen3 & marker only & \textbf{0.569} & 0.397 & 0.539 \\
+Qwen3 & context only & 0.376 & 0.271 & 0.527 \\
+Qwen3 & context + marker & 0.496 & \textbf{0.502} & \textbf{0.594} \\
+\bottomrule
+\end{tabular}
+\caption{Held-out-lemma balanced accuracy for dense representations. For Qwen3, adding ten-turn context to the marker improves evidence and function prediction beyond marker-only, suggesting some contextual modal interpretation rather than pure lexical lookup.}
+\label{tab:heldout}
+\end{table}
+
+\Cref{tab:heldout} applies the stricter held-out-lemma control. The results are mixed but more interesting. MiniLM marker embeddings generalize well to unseen lemmas, consistent with a multilingual semantic space in which modal/evidential words cluster by meaning. Qwen3 shows the clearest evidence that context can matter: its context-plus-marker state improves evidence prediction from 0.397 to 0.502 and function prediction from 0.539 to 0.594 under held-out lemmas. This is a stronger representation-learning signal than the original pre-marker experiment, because it asks whether the hidden state after the modal expression encodes the profile of that expression in context.
+
+\subsection{Output distributions prefer human adverbial markers only modestly}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Model & English & French & Italian & All \\
+\midrule
+GPT-2 & 0.765 & 0.655 & 0.583 & 0.664 \\
+GPT-Neo-125M & 0.794 & 0.673 & 0.556 & 0.672 \\
+Qwen3-0.6B & 0.765 & 0.727 & 0.500 & 0.672 \\
+\bottomrule
+\end{tabular}
+\caption{Pairwise output-distribution accuracy on adverb/adverbial rows. Values are the fraction of examples for which the human modal continuation receives higher mean token log probability than a matched foil. Chance is 0.5.}
+\label{tab:lm}
+\end{table}
+
+\Cref{tab:lm} shows a modest but consistent preference for human modal adverbs over foils. This is not a decoding result: no continuations were sampled. It is a direct comparison in the models' conditional distributions. The preference is strongest in English and weaker in Italian. Qwen3 improves over GPT-2 in French but not Italian.
+
+\section{Discussion}
+
+The results support a mixed but informative conclusion: modal-profile information is much more recoverable after lexical realization than before it. This matters for the representation-learning interpretation of the project. The strongest version of the hypothesis would be that the discourse state before a modal marker already contains a clean, linearly accessible representation of the speaker's upcoming epistemic stance. The current results provide only limited support for that stronger claim. Longer turn-based context helps modestly, but pre-marker balanced accuracy remains low.
+
+The marker-aware experiments show why caution is necessary. The marker itself is highly diagnostic of polarity, evidence, and function. This is linguistically expected: epistemic markers lexicalize aspects of commitment, evidence, and nonveridical stance. But it also means that high performance in marker-visible settings can reflect lexical lookup rather than contextual interpretation. The held-out-lemma evaluation is therefore the more important test. Under this stricter control, Qwen3's context-plus-marker state improves evidence and function prediction over marker-only representations, suggesting that the model encodes some contextual interpretation of the modal expression rather than only the identity of the marker.
+
+The distinction between representation and output distribution is also important. The linear probes ask whether $a$ is recoverable from $z_{\theta,\ell}(x)$ or $z_{\theta,\ell}(x,m)$. The continuation scores ask whether $P_\theta(y\mid x)$ assigns more probability to the human modal continuation than to a matched foil. Neither experiment is equivalent to analyzing a decoded sample. This is especially important for modal language, where one generated response can sound overconfident even if the underlying distribution assigns substantial probability mass to hedged alternatives.
+
+The output-distribution results are modest. Generative language models prefer human adverbial modal continuations over matched foils above chance, but not overwhelmingly. This suggests that the models have some distributional sensitivity to human modal choices, while also leaving substantial room for errors, foil artifacts, and annotation ambiguity. A more complete version of the experiment would require human-designed foils and qualitative error analysis.
+
+Overall, the project gives a cautionary answer to the question in the title. Small off-the-shelf language models do not appear to maintain a clean, linearly accessible latent variable for ``speaker epistemic state'' before the modal expression is generated. Instead, modal profile becomes much more recoverable once the marker is present. The most promising evidence for representation beyond lexical lookup is the held-out-lemma result, where context improves post-marker evidence and function prediction. Thus the current findings are better described as evidence for marker-conditioned modal interpretation than for a strong pre-generation representation of epistemic stance.
+
+\section{Limitations and Future Work}
+
+The main limitation is that MODAL is observational. Unlike causal representation learning settings with interventions \citep{lippe2022citris}, the corpus does not vary the evidence while holding the proposition, speaker, and discourse situation fixed. Therefore the probes estimate statistical recoverability, not causal identifiability. In particular, weak pre-marker performance does not prove that the model lacks an epistemic-state representation; it may simply mean that the relevant modal choice is not identifiable from the observed context alone. Conversely, strong marker-visible performance does not prove deep contextual understanding, because the marker itself can carry much of the annotated profile.
+
+The next step is to combine MODAL with controlled minimal pairs. For example, one could create matched contexts where the proposition is fixed but the evidence licenses \emph{may}, \emph{may not}, \emph{must}, \emph{apparently}, or bare assertion. This would allow a cleaner test of whether representation directions and output probabilities shift when evidential support changes.
+
+The second limitation is model scale. I used locally cached small models to keep the project reproducible. Larger multilingual instruction models may show stronger output preferences and cleaner hidden-state separability. Next step of this project would include larger models, held-out source conversations, human-designed foils, and causal interventions such as activation patching or steering along learned modal directions.
+
+Finally, MODAL is spoken dialogue. The findings should not be generalized to written scientific, legal, or medical discourse without another corpus. This is a challenge of this project because of limited existing corpus or benchmark. But in another way spoken discourse uncover evidential and interactional commitment modal profiles for us to study, which can be difficult to encode in a synthetic prompting setting, but which in turn can test more careful controlled formal contrasts. A future work would combine the MODAL corpus with a written-text corpora or a synthetic prompting setting for a more formal and controlled study of the linguistic behavior and internal representationof a language model.
+
+\section{Reproducibility}
+
+The project code lives in \path{src/}. The main commands are:
+\begin{verbatim}
+python src/parse_modal_corpus.py
+python src/build_modal_dataset.py
+python src/run_modal_experiments.py
+python src/run_probe_ablation.py
+python src/run_modal_representation_views.py
+\end{verbatim}
+The generated result files are in \path{data/modal_corpus/experiments/}. The main dataset file is \path{data/modal_corpus/processed/modal_experiment_dataset.tsv}.
+
+\printbibliography
+
+\newpage
+\appendix
+
+\section{Full Label Vocabularies}
+
+The relation-level polarity labels are positive, neutral, and negative. The original evidence labels are no evidence/no\_evidence, quotative, indirect inferential, indirect reportive, memory, direct visual, direct auditory, and direct feeling. The original function labels are qualification, acceptation, check, confirmation, information, non-confirmation, non-acceptation, concession, and order. The experiments coarsen evidence and function only to avoid extremely small classes.
+
+\section{Local Artifacts}
+
+\begin{itemize}
+    \item Parser: \path{src/parse_modal_corpus.py}
+    \item Dataset builder: \path{src/build_modal_dataset.py}
+    \item Main experiment runner: \path{src/run_modal_experiments.py}
+    \item Text ablation: \path{src/run_probe_ablation.py}
+    \item Turn and marker-view probes: \path{src/run_modal_representation_views.py}
+    \item Probe metrics: \path{data/modal_corpus/experiments/probe_results.tsv}
+    \item Representation-view metrics: TF-IDF and dense TSV files in the experiments directory.
+    \item LM scores: \path{data/modal_corpus/experiments/lm_distribution_scores.tsv}
+\end{itemize}
+
+\end{document}

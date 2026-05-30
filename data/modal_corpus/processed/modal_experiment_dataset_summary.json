@@ -1,0 +1,38 @@
+{
+  "by_language": {
+    "English": 199,
+    "French": 278,
+    "Italian": 211
+  },
+  "evidence_coarse": {
+    "inferential": 170,
+    "no_evidence": 201,
+    "reported": 267,
+    "situated": 50
+  },
+  "function_coarse": {
+    "other": 79,
+    "qualification": 609
+  },
+  "marker_morphosyntax": {
+    "lexicon_CTP": 345,
+    "lexicon_adverb": 89,
+    "lexicon_adverbial": 36,
+    "lexicon_modal_verb": 55,
+    "lexicon_verb_CTP": 163
+  },
+  "n_rows": 688,
+  "polarity": {
+    "negative": 21,
+    "neutral": 104,
+    "positive": 563
+  },
+  "seed": 17,
+  "selected_marker_morphosyntax": [
+    "lexicon_adverb",
+    "lexicon_adverbial",
+    "lexicon_modal_verb",
+    "lexicon_CTP",
+    "lexicon_verb_CTP"
+  ]
+}

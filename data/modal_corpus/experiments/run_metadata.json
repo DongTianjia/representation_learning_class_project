@@ -1,0 +1,23 @@
+{
+  "device": "cpu",
+  "encoder_models": [
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    "gpt2",
+    "Qwen/Qwen3-0.6B"
+  ],
+  "labels": {
+    "evidence": "evidence_coarse",
+    "function": "function_coarse",
+    "polarity": "relation_construction_polarity_norm"
+  },
+  "lm_distribution_subset": [
+    "lexicon_adverb",
+    "lexicon_adverbial"
+  ],
+  "lm_models": [
+    "gpt2",
+    "EleutherAI/gpt-neo-125M",
+    "Qwen/Qwen3-0.6B"
+  ],
+  "n_rows": 688
+}
