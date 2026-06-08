@@ -1,6 +1,6 @@
 # Epistemic Modal Profiles in Language Models
 
-This final project studies whether language models represent and express epistemic modal profiles in natural discourse. It uses the multilingual MODAL corpus, not the synthetic pilot cases from the thesis work.
+This final project of STAT 37784 - Representation Learning studies whether language models represent and express epistemic modal profiles in natural discourse. It uses the multilingual MODAL corpus.
 
 Main paper:
 
